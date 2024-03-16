@@ -24,8 +24,8 @@ def read_json(filename):
 
 
 def write_json(filename,data):
-    with open(filename, 'w') as fp:
-        json.dump(data, fp).encode('utf8')
+    with open(filename, 'w', encoding='utf8') as fp:
+        json.dump(data, fp)
 
 
 def make_save_dir(save_dir):

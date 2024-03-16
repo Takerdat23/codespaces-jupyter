@@ -1,6 +1,6 @@
 # Tree_transformer
 
-#Pretraining
+# Pretraining
 
 python main.py -train -seq_length 100 -batch_size 64 -model_dir ./Model2 -train_path ./data/demo-full.txt -num_step 60000
 
