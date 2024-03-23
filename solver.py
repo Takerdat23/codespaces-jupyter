@@ -114,7 +114,7 @@ class Solver():
                 output = output.float()
                 labels = labels.float()
                 loss = F.binary_cross_entropy(output, labels)
-                print("loss", loss)
+                
                 # loss = self.model.masked_lm_loss(output, labels)
                 total_loss.append(loss.item())
 
