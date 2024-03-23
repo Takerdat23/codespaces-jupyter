@@ -10,7 +10,7 @@ from parse import *
 import random
 from bert_optimizer import BertAdam
 from torch.utils.data import DataLoader
-
+from sklearn.metrics import f1_score
 
 
 class Solver():
@@ -28,15 +28,18 @@ class Solver():
         self.tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
 
         df_train = pd.read_csv(self.args.train_path,  encoding = 'utf8')
+        df_val = pd.read_csv(self.args.valid_path,  encoding = 'utf8')
+
 
         
         # data_utils_holder = data_utils(self.args)
         # data_yielder = data_utils_holder.train_data_yielder()
         self.categories = get_categories(df_train)
         dataset = process_data(df_train, self.categories)
+        val_dataset =  process_data(df_val, self.categories)
         data_collator = SentimentDataCollator(self.tokenizer)
         self.train_loader = DataLoader(dataset, batch_size=self.args.batch_size, collate_fn=data_collator)
-
+        self.val_loader =DataLoader(val_dataset, batch_size=self.args.batch_size, collate_fn=data_collator)
       
         self.model = ABSA_Tree_transfomer( vocab_size= self.tokenizer.vocab_size, N= 12, d_model= 768, 
                                           d_ff= 2048, h= 12, dropout = 0.1, num_categories = len(self.categories) , 
@@ -54,6 +57,46 @@ class Solver():
     def LoadPretrain(self, model_dir): 
         path = os.path.join(model_dir, 'model.pth')
         return self.model.load_state_dict(torch.load(path)['state_dict'])
+    
+    def evaluate_f1_accuracy(self):
+        if self.args.no_cuda == False:
+            device = "cuda"
+        else:
+            device = "cpu"
+        
+        self.model.to(device)
+        self.model.eval()
+        
+        all_predictions = []
+        all_ground_truth = []
+        
+        with torch.no_grad():
+            for step, batch in tqdm(enumerate(self.val_loader)):
+                inputs = batch['input_ids'].to(device)
+                mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+
+                output = self.model(inputs, mask, self.categories)
+
+                output = torch.sigmoid(output)
+                output = output.float()
+                labels = labels.float()
+                
+                # Convert probabilities to binary predictions
+                predictions = torch.argmax(output, dim=2)
+                ground_truth = torch.argmax(labels, dim=2)
+                
+                # Flatten predictions and ground truth tensors
+                predictions_flat = predictions.view(-1).cpu().numpy()
+                ground_truth_flat = ground_truth.view(-1).cpu().numpy()
+                
+                all_predictions.extend(predictions_flat)
+                all_ground_truth.extend(ground_truth_flat)
+        
+        # Compute F1 score
+        f1_accuracy = f1_score(all_ground_truth, all_predictions, average='weighted')
+        
+        return f1_accuracy
     
     def save_model(self, model, optimizer, epoch, step, model_dir):
         model_name = f'model_epoch_{epoch}_step_{step}.pth'
@@ -91,9 +134,7 @@ class Solver():
         
         total_loss = []
         start = time.time()
-        total_step_time = 0.
-        total_masked = 0.
-        total_token = 0.
+     
 
         self.model.train()
         total_loss = []
@@ -126,12 +167,15 @@ class Solver():
                     elapsed = time.time() - start
                     print(f'Epoch [{epoch + 1}/{self.args.epoch}], Step [{step + 1}/{len(self.train_loader)}], '
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
+            
+            #Valid stage 
+            f1_score = self.evaluate_f1_accuracy()
+            print(f"Epoch {epoch} Validation score: ", f1_score)
+           
+                    
                 
-                    # Save model
-                    self.save_model(self.model, optim, epoch, step, self.model_dir)
-
-                    start = time.time()
-
+                 
+        self.save_model(self.model, optim, self.args.epoch, step, self.model_dir)
 
 
  

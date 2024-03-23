@@ -6,7 +6,7 @@ import numpy as np
 from utils import * 
 from torch.utils.data import Dataset, DataLoader
 from models import *
-
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 TRAIN_PATH = './data/UIT-ViSFD/Train.csv'
 VAL_PATH = './data/UIT-ViSFD/Dev.csv'
@@ -28,53 +28,67 @@ dataset = process_data(df_train, categories)
 data_collator = SentimentDataCollator(tokenizer)
 dataloader = DataLoader(dataset, batch_size=64, collate_fn=data_collator)
 
+categories_test = get_categories(df_test)
+data_test = process_data(df_test, categories_test)
+print("test", categories_test )
+
       
-model = ABSA_Tree_transfomer( vocab_size= tokenizer.vocab_size, N= 12, d_model= 768, d_ff= 2048, h= 12, dropout = 0.1, num_categories = len(categories) , no_cuda=False)
+# model = ABSA_Tree_transfomer( vocab_size= tokenizer.vocab_size, N= 12, d_model= 768, d_ff= 2048, h= 12, dropout = 0.1, num_categories = len(categories) , no_cuda=False)
 
 
 
-device = 'cuda'
+# device = 'cuda'
 
-model.to(device)
+# model.to(device)
 
-for batch in tqdm(dataloader):
-    inputs = batch['input_ids'].to(device)
-    mask = batch['attention_mask'].to(device)
-    labels = batch['labels'].to(device)
+# for batch in tqdm(dataloader):
+#     inputs = batch['input_ids'].to(device)
+#     mask = batch['attention_mask'].to(device)
+#     labels = batch['labels'].to(device)
 
-    output = model(inputs, mask, categories)
-    print(output.shape)
-    break
+#     output = model(inputs, mask, categories)
+#     print(output.shape)
+#     break
+
+
+def calculate_metrics(predictions, ground_truth):
+    """
+    Calculate accuracy, precision, recall, and F1 score given predictions and ground truth.
+    """
+    accuracy = accuracy_score(predictions, ground_truth)
+    precision, recall, f1_score, _ = precision_recall_fscore_support(predictions, ground_truth, average='weighted')
+    return accuracy, precision, recall, f1_score
+
+def evaluate_aspect_sentiment_metrics(dataset, aspect_categories):
+    """
+    Evaluate accuracy, precision, recall, and F1 score given a dataset and aspect categories.
+    """
+    predictions = {aspect: [] for aspect in aspect_categories}
+    ground_truth = {aspect: [] for aspect in aspect_categories}
+    
+    for data_point in dataset:
+        for aspect in aspect_categories:
+            predicted_sentiment = np.argmax(data_point["predicted_labels"][aspect])
+            true_sentiment = np.argmax(data_point["true_labels"][aspect])
+            predictions[aspect].append(predicted_sentiment)
+            ground_truth[aspect].append(true_sentiment)
+    
+    aspect_metrics = {}
+    for aspect in aspect_categories:
+        aspect_predictions = predictions[aspect]
+        aspect_ground_truth = ground_truth[aspect]
+        aspect_accuracy, aspect_precision, aspect_recall, aspect_f1_score = calculate_metrics(aspect_predictions, aspect_ground_truth)
+        aspect_metrics[aspect] = {
+            "Accuracy": aspect_accuracy,
+            "Precision": aspect_precision,
+            "Recall": aspect_recall,
+            "F1 Score": aspect_f1_score
+        }
+    
+    return aspect_metrics
+
+
+aspect_metrics = evaluate_aspect_sentiment_metrics(dataset, categories)
 
     
-# class PositionalEncoding(nn.Module):
-#     def __init__(self, d_model, max_len=512):
-#         super(PositionalEncoding, self).__init__()
-#         self.dropout = nn.Dropout(p=0.1)
-        
-#         # Compute the positional encodings once in log space
-#         pe = torch.zeros(max_len, d_model)
-#         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-#         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-#         pe[:, 0::2] = torch.sin(position * div_term)
-#         pe[:, 1::2] = torch.cos(position * div_term)
-#         pe = pe.unsqueeze(0)  # Add batch dimension
-#         self.register_buffer('pe', pe)
-        
-#     def forward(self, x):
-#         # Ensure that positional encoding matches the shape of the input tensor x
-#         pe = self.pe[:, :x.size(1)]  # Slice positional encoding along the sequence length dimension
-#         pe = pe.expand(x.size(0), -1, -1)  # Expand positional encoding to match batch size
-#         pe = pe.to(x.device)  # Move positional encoding to the same device as input tensor
-#         x = x + pe
-#         return self.dropout(x)
-
-# # Example usage:
-# d_model = 768  # Dimensionality of the model
-# max_len = 128 # Maximum sequence length
-# positional_encoding = PositionalEncoding(d_model, max_len)
-
-# # Assuming x is your input tensor of shape (batch_size, sequence_length, d_model)
-# x = torch.randn(32, 128, d_model).cuda() # Example input tensor
-# output = positional_encoding(x)
-# print(output)
+ 
