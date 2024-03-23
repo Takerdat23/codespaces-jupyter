@@ -18,10 +18,17 @@ def attention(query, key, value, mask=None, dropout=None, group_prob=None, no_cu
     if mask is not None:
         seq_len=query.size()[-2]
         if no_cuda:
-            b = torch.from_numpy(np.diag(np.ones(seq_len, dtype=np.int32),0))
+            b_or = torch.from_numpy(np.diag(np.ones(seq_len, dtype=np.int32),0))
         else:
-            b = torch.from_numpy(np.diag(np.ones(seq_len, dtype=np.int32), 0)).cuda()
-        scores = scores.masked_fill((mask|b) == 0, -1e9)
+            b_or = torch.from_numpy(np.diag(np.ones(seq_len, dtype=np.int32), 0)).cuda()
+        
+      
+
+        mask_expanded = mask.unsqueeze(1).expand_as(scores)
+        scores = scores.masked_fill((mask_expanded | b_or) == 0, -1e9)
+   
+        # scores = scores.masked_fill((mask|b_or) == 0, -1e9)
+      
     if group_prob is not None:
         p_attn = F.softmax(scores, dim = -1)
         p_attn = p_attn*group_prob.unsqueeze(1)
@@ -83,20 +90,25 @@ class GroupAttention(nn.Module):
 
         context =self.norm(context)
 
-        if self.no_cuda:
-            a = torch.from_numpy(np.diag(np.ones(seq_len - 1, dtype=np.int32),1))
-            b = torch.from_numpy(np.diag(np.ones(seq_len, dtype=np.int32),0))
-            c = torch.from_numpy(np.diag(np.ones(seq_len - 1, dtype=np.int32),-1))
+        if self.no_cuda : # no_cuda
+            a = torch.diag(torch.ones(seq_len - 1, dtype=torch.int32), 1)
+            c = torch.diag(torch.ones(seq_len - 1, dtype=torch.int32), -1)
+            b = torch.diag(torch.ones(seq_len , dtype=torch.int32))
             tri_matrix = torch.from_numpy(np.triu(np.ones([seq_len,seq_len], dtype=np.float32),0))
         else:
-            a = torch.from_numpy(np.diag(np.ones(seq_len - 1, dtype=np.int32),1)).cuda()
-            b = torch.from_numpy(np.diag(np.ones(seq_len, dtype=np.int32),0)).cuda()
-            c = torch.from_numpy(np.diag(np.ones(seq_len - 1, dtype=np.int32),-1)).cuda()
-            tri_matrix = torch.from_numpy(np.triu(np.ones([seq_len,seq_len], dtype=np.float32),0)).cuda()
+            a = torch.diag(torch.ones(seq_len - 1, dtype=torch.int32), 1).cuda()
+            c = torch.diag(torch.ones(seq_len - 1, dtype=torch.int32), -1).cuda()
+            b = torch.diag(torch.ones(seq_len , dtype=torch.int32)).cuda()
+            tri_matrix = torch.triu(torch.ones(seq_len, seq_len, dtype=torch.float32)).cuda()
+       
+        eos_mask_adjusted = eos_mask.unsqueeze(2).expand(-1, -1, seq_len )
+       
+        mask = eos_mask_adjusted & (a+c)
+        # mask = eos_mask[:, 1:] & (a + c) | b
+        # mask = eos_mask & (a+c) | b
+        # mask = eos_mask_adjusted & (a + c) | b
 
-        #mask = eos_mask & (a+c) | b
-        mask = eos_mask & (a+c)
-        
+
         key = self.linear_key(context)
         query = self.linear_query(context)
         

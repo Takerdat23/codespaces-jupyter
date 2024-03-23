@@ -9,6 +9,9 @@ from utils import *
 from parse import *
 import random
 from bert_optimizer import BertAdam
+from torch.utils.data import DataLoader
+
+
 
 class Solver():
     def __init__(self, args):
@@ -26,18 +29,14 @@ class Solver():
         self.test_masked_lm_input = []
 
 
-    def _make_model(self, vocab_size, N=10, 
-            d_model=512, d_ff=2048, h=8, dropout=0.1):
+    def _make_model(self, vocab_size, N=12, 
+            d_model=768, d_ff=2048, h=12, dropout=0.1):
+            # Bert base 12 layers and 12 attention heads
+            # Bert large 24 layers and 16 attention heads
             
             "Helper: Construct a model from hyperparameters."
-            c = copy.deepcopy
-            attn = MultiHeadedAttention(h, d_model, no_cuda=self.no_cuda)
-            group_attn = GroupAttention(d_model, no_cuda=self.no_cuda)
-            ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-            position = PositionalEncoding(d_model, dropout)
-            word_embed = nn.Sequential(Embeddings(d_model, vocab_size), c(position))
-            model = Encoder(EncoderLayer(d_model, c(attn), c(ff), group_attn, dropout), 
-                    N, d_model, vocab_size, c(word_embed))
+            model = ABSA_Tree_transfomer( vocab_size, N, d_model, d_ff, h, dropout)
+           
             
             for p in model.parameters():
                 if p.dim() > 1:
@@ -48,9 +47,25 @@ class Solver():
                 return model.cuda()
     def ModelSummary(self): 
         print(self.model)
+    
+    def LoadPretrain(self, model_dir): 
+        path = os.path.join(model_dir, 'model.pth')
+        return self.model.load_state_dict(torch.load(path)['state_dict'])
+    
+    def save_model(self, model, optimizer, epoch, step, model_dir):
+        model_name = f'model_epoch_{epoch}_step_{step}.pth'
+        state = {
+            'epoch': epoch,
+            'step': step,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }
+        torch.save(state, os.path.join(model_dir, model_name))
 
 
     def train(self):
+        if self.args.no_cuda == False: 
+            device = "cuda"
         if self.args.load:
             path = os.path.join(self.model_dir, 'model.pth')
             self.model.load_state_dict(torch.load(path)['state_dict'])
@@ -63,8 +78,16 @@ class Solver():
                     ttt *= s
                 tt += ttt
         print('total_param_num:',tt)
+        tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
+        df_train = pd.read_csv(self.args.train_path,  encoding = 'utf8')
 
-        data_yielder = self.data_utils.train_data_yielder()
+        data_collator = SentimentDataCollator(tokenizer)
+        # data_utils_holder = data_utils(self.args)
+        # data_yielder = data_utils_holder.train_data_yielder()
+        categories = get_categories(df_train)
+        dataset = process_data(df_train, categories)
+        train_loader = DataLoader(dataset, batch_size=self.args.batch_size, collate_fn=data_collator)
+
         optim = torch.optim.Adam(self.model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
         #optim = BertAdam(self.model.parameters(), lr=1e-4)
         
@@ -74,40 +97,74 @@ class Solver():
         total_masked = 0.
         total_token = 0.
 
-        for step in range(self.args.num_step):
-            self.model.train()
-            batch = data_yielder.__next__()
+        self.model.train()
+        total_loss = []
+        start = time.time()
+        
+        for epoch in range(self.args.epoch):
+            for step, batch in enumerate(train_loader):
+                inputs = batch['input_ids'].to(device)
+                mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+
+                optim.zero_grad()
+                output = self.model(inputs, mask, categories=None)  # Assuming categories are not used for now
             
-            step_start = time.time()
-            out,break_probs = self.model.forward(batch['input'].long(), batch['input_mask'])
-            
-            loss = self.model.masked_lm_loss(out, batch['target_vec'].long())
-            optim.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.5)
-            optim.step()
+                # Calculate loss
+                print("output", output)
+                print("label", labels)
+                loss = F.binary_cross_entropy(output, labels)
+                # loss = self.model.masked_lm_loss(output, labels)
+                total_loss.append(loss.item())
 
-            total_loss.append(loss.detach().cpu().numpy())
+                # Backpropagation
+                loss.backward()
+                optim.step()
 
-            total_step_time += time.time() - step_start
-            
-            if step % 200 == 1:
-                elapsed = time.time() - start
-                print("Epoch Step: %d Loss: %f Total Time: %f Step Time: %f" %
-                        (step, np.mean(total_loss), elapsed, total_step_time))
-                self.model.train()
-                print()
-                start = time.time()
-                total_loss = []
-                total_step_time = 0.
-
-
-            if step % 1000 == 0:
-                print('saving!!!!')
+                if (step + 1) % 100 == 0:
+                    elapsed = time.time() - start
+                    print(f'Epoch [{epoch + 1}/{self.args.epoch}], Step [{step + 1}/{len(train_loader)}], '
+                        f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
                 
-                model_name = 'model.pth'
-                state = {'step': step, 'state_dict': self.model.state_dict()}
-                torch.save(state, os.path.join(self.model_dir, model_name))
+                    # Save model
+                    self.save_model(self.model, optim, epoch, step, self.model_dir)
+
+                    start = time.time()
+
+        # for step in range(self.args.epoch):
+        #     self.model.train()
+        #     batch = data_yielder.__next__()
+            
+        #     step_start = time.time()
+        #     out, _ ,_ = self.model.forward(batch['input'].long(), batch['input_mask'])
+            
+        #     loss = self.model.masked_lm_loss(out, batch['target_vec'].long())
+        #     optim.zero_grad()
+        #     loss.backward()
+        #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.5)
+        #     optim.step()
+
+        #     total_loss.append(loss.detach().cpu().numpy())
+
+        #     total_step_time += time.time() - step_start
+            
+        #     if step % 200 == 1:
+        #         elapsed = time.time() - start
+        #         print("Epoch Step: %d Loss: %f Total Time: %f Step Time: %f" %
+        #                 (step, np.mean(total_loss), elapsed, total_step_time))
+        #         self.model.train()
+        #         print()
+        #         start = time.time()
+        #         total_loss = []
+        #         total_step_time = 0.
+
+
+        #     if step % 1000 == 0:
+        #         print('saving!!!!')
+                
+        #         model_name = 'model.pth'
+        #         state = {'step': step, 'state_dict': self.model.state_dict()}
+        #         torch.save(state, os.path.join(self.model_dir, model_name))
 
 
     def test(self, threshold=0.8):

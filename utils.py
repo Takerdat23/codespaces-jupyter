@@ -17,6 +17,8 @@ import pandas as pd
 import time
 from torch.utils.data import Dataset
 
+
+
 def read_json(filename):
     with open(filename, 'r') as fp:
         data = json.load(fp)
@@ -33,6 +35,65 @@ def make_save_dir(save_dir):
         os.makedirs(save_dir)
     return save_dir
 
+#for aspect-based tasks
+
+def get_categories(df): 
+    aspect_categories = set()
+    for index , row in df.iterrows():
+    # Process aspect sentiments
+        aspect_sentiments = row['label'].split(';')
+        for aspect_sentiment in aspect_sentiments:
+            split = aspect_sentiment.strip('{}')
+            if(len(split.split('#'))< 2): 
+                continue
+            aspect, _ = split.split('#')
+            aspect_categories.add(aspect)
+
+    return list(aspect_categories)
+
+
+
+def process_data(df ,aspect_categories ): 
+
+    dataset = []
+   
+    for _ , row in df.iterrows():
+        data_dict = {}
+ 
+        data_dict["comment"]= row['comment']
+        label_vectors = {}
+
+
+        aspect_sentiments = {}
+        if row['label'] == None: 
+            continue
+        else: 
+            for aspect_sentiment in row['label'].split(';'):
+                split = aspect_sentiment.strip('{}')
+                if(len(split.split('#'))< 2): 
+                    continue
+                aspect, sentiment = split.split('#')
+                aspect_sentiments[aspect] = sentiment
+
+   
+            for aspect in aspect_categories:
+                label_vector = [0, 0, 0]  
+                sentiment = aspect_sentiments.get(aspect, None)
+                if sentiment:
+                    if sentiment == 'Positive':
+                        label_vector[0] = 1
+                    elif sentiment == 'Negative':
+                        label_vector[1] = 1
+                    elif sentiment == 'Neutral':
+                        label_vector[2] = 1
+                label_vectors[aspect] = label_vector
+
+        
+     
+            data_dict["label"]= torch.tensor([label_vectors[aspect] for aspect in aspect_categories])
+        dataset.append(data_dict)
+
+    return dataset
 
 
 def cc(arr, no_cuda=False):
@@ -76,24 +137,18 @@ class SentimentDataCollator:
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
 
-    def collate_batch(self, batch):
-        texts, labels = zip(*batch)  # Separate texts and labels
-        encoded_texts = [self.tokenizer(text, padding=True, truncation=True, return_tensors="pt") for text in texts]  # Tokenize texts
-        input_ids = [enc['input_ids'].squeeze(0) for enc in encoded_texts]  # Extract input IDs
-        attention_masks = [enc['attention_mask'].squeeze(0) for enc in encoded_texts]  # Extract attention masks
+    def __call__(self, batch):
+        inputs = [example["comment"] for example in batch]
+        labels = [example["label"] for example in batch]
 
-        # Pad sequences to the same length
-        padded_input_ids = pad_sequence(input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        padded_attention_masks = pad_sequence(attention_masks, batch_first=True, padding_value=0)
+        inputs_dict = self.tokenizer(inputs, max_length=128,  padding='max_length', truncation=True, return_tensors="pt")
+     
+        labels_tensor = torch.stack(labels)
 
-        # Convert labels to tensors
-        label_tensor = torch.tensor(labels)
-
-        return {
-            'input_ids': padded_input_ids,
-            'attention_mask': padded_attention_masks,
-            'labels': label_tensor
-        }
+      
+        return {"input_ids": inputs_dict["input_ids"].squeeze(0),
+                "attention_mask": inputs_dict["attention_mask"].squeeze(0),
+                "labels": labels_tensor}
 
 
 class ClassificationDataset(Dataset):

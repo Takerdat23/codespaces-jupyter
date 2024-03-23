@@ -8,6 +8,7 @@ def parse():
     parser.add_argument('-seq_length', type=int, default=50, help='sequence length')
     parser.add_argument('-batch_size', type=int, default=64, help='batch size')
     parser.add_argument('-num_step', type=int, default=100000, help='sequence length')
+    parser.add_argument('-epoch', type=int, default=10, help='sequence length')
     parser.add_argument('-data_dir',default='data_dir',help='data dir')
     parser.add_argument('-load',action='store_true',help='load pretrained model')
     parser.add_argument('-train', action='store_true',help='whether train the model')
@@ -25,7 +26,7 @@ if __name__ == '__main__':
     solver = Solver(args)
     print(solver.ModelSummary())
     
-    if args.train:
-        solver.train()
-    elif args.test:
-        solver.test()
+    # if args.train:
+    #     solver.train()
+    # elif args.test:
+    #     solver.test()
