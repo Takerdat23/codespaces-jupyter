@@ -26,7 +26,7 @@ if __name__ == '__main__':
     solver = Solver(args)
     print(solver.ModelSummary())
     
-    # if args.train:
-    #     solver.train()
-    # elif args.test:
-    #     solver.test()
+    if args.train:
+        solver.train()
+    elif args.test:
+        solver.test()
