@@ -58,7 +58,47 @@ class Solver():
         path = os.path.join(model_dir, 'model.pth')
         return self.model.load_state_dict(torch.load(path)['state_dict'])
     
-    def evaluate_f1_accuracy(self):
+    # def evaluate_f1_accuracy(self):
+    #     if self.args.no_cuda == False:
+    #         device = "cuda"
+    #     else:
+    #         device = "cpu"
+        
+    #     self.model.to(device)
+    #     self.model.eval()
+        
+    #     all_predictions = []
+    #     all_ground_truth = []
+        
+    #     with torch.no_grad():
+    #         for step, batch in tqdm(enumerate(self.val_loader)):
+    #             inputs = batch['input_ids'].to(device)
+    #             mask = batch['attention_mask'].to(device)
+    #             labels = batch['labels'].to(device)
+
+    #             output = self.model(inputs, mask, self.categories)
+
+    #             output = torch.sigmoid(output)
+    #             output = output.float()
+    #             labels = labels.float()
+                
+    #             # Convert probabilities to binary predictions
+    #             predictions = torch.argmax(output, dim=2)
+    #             ground_truth = torch.argmax(labels, dim=2)
+                
+    #             # Flatten predictions and ground truth tensors
+    #             predictions_flat = predictions.view(-1).cpu().numpy()
+    #             ground_truth_flat = ground_truth.view(-1).cpu().numpy()
+                
+    #             all_predictions.extend(predictions_flat)
+    #             all_ground_truth.extend(ground_truth_flat)
+        
+    #     # Compute F1 score
+    #     f1_accuracy = f1_score(all_ground_truth, all_predictions, average='weighted')
+        
+    #     return f1_accuracy
+    
+    def evaluate_f1_score(self):
         if self.args.no_cuda == False:
             device = "cuda"
         else:
@@ -67,11 +107,11 @@ class Solver():
         self.model.to(device)
         self.model.eval()
         
-        all_predictions = []
-        all_ground_truth = []
+        all_aspect_predictions = {aspect: [] for aspect in self.categories}
+        all_aspect_ground_truth = {aspect: [] for aspect in self.categories}
         
         with torch.no_grad():
-            for step, batch in tqdm(enumerate(self.val_loader)):
+            for step, batch in enumerate(self.val_loader):
                 inputs = batch['input_ids'].to(device)
                 mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
@@ -86,17 +126,21 @@ class Solver():
                 predictions = torch.argmax(output, dim=2)
                 ground_truth = torch.argmax(labels, dim=2)
                 
-                # Flatten predictions and ground truth tensors
-                predictions_flat = predictions.view(-1).cpu().numpy()
-                ground_truth_flat = ground_truth.view(-1).cpu().numpy()
-                
-                all_predictions.extend(predictions_flat)
-                all_ground_truth.extend(ground_truth_flat)
+                for aspect in self.categories:
+                    aspect_predictions = predictions[:, self.categories.index(aspect)]
+                    aspect_ground_truth = ground_truth[:, self.categories.index(aspect)]
+                    
+                    aspect_predictions_flat = aspect_predictions.view(-1).cpu().numpy()
+                    aspect_ground_truth_flat = aspect_ground_truth.view(-1).cpu().numpy()
+                    
+                    all_aspect_predictions[aspect].extend(aspect_predictions_flat)
+                    all_aspect_ground_truth[aspect].extend(aspect_ground_truth_flat)
         
-        # Compute F1 score
-        f1_accuracy = f1_score(all_ground_truth, all_predictions, average='weighted')
+        aspect_f1_scores = {}
+        for aspect in self.categories:
+            aspect_f1_scores[aspect] = f1_score(all_aspect_ground_truth[aspect], all_aspect_predictions[aspect], average='weighted')
         
-        return f1_accuracy
+        return aspect_f1_scores
     
     def save_model(self, model, optimizer, epoch, step, model_dir):
         model_name = f'model_epoch_{epoch}_step_{step}.pth'
@@ -140,8 +184,8 @@ class Solver():
         total_loss = []
         start = time.time()
         
-        for epoch in range(self.args.epoch):
-            for step, batch in enumerate(self.train_loader):
+        for epoch in tqdm(range(self.args.epoch)):
+            for step, batch in tqdm(enumerate(self.train_loader)):
                 inputs = batch['input_ids'].to(device)
                 mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
