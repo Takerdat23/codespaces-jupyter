@@ -103,7 +103,7 @@ class Solver():
     #     return f1_accuracy
     
     def evaluate(self):
-        if self.args.no_cuda == False:
+        if self.args.no_cuda == False: 
             device = "cuda"
         else:
             device = "cpu"
@@ -119,17 +119,21 @@ class Solver():
             for batch in self.val_loader:
                 inputs = batch['input_ids'].to(device)
                 mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].cpu().numpy()
+                labels = batch['labels'].to(device)
 
-                # Forward pass
-                output = self.model(inputs, mask, self.categories).cpu().numpy()
+                output = self.model(inputs, mask, self.categories)
+
+                output = torch.sigmoid(output)
+                output = output.float()
+                labels = labels.float()
 
                 # Iterate over each category
                 for category_index in range(output.shape[1]):
                     # Extract aspect labels and predictions
-                    aspect_labels = labels[:, category_index, 0]
-                    aspect_predictions = output[:, category_index].argmax(axis=1)
-
+                    aspect_labels = torch.argmax(labels, dim=2)
+                    aspect_predictions = torch.argmax(output[:, :, :3], dim=2) 
+                 
+                   
                     # Extract sentiment labels and predictions
                     sentiment_labels = labels[:, category_index, :].argmax(axis=1)  # Extract sentiment labels correctly
                     sentiment_predictions = output[:, category_index, :].argmax(axis=1)
@@ -139,14 +143,118 @@ class Solver():
                     # Extend lists
                     aspect_true.extend(aspect_labels)
                     aspect_pred.extend(aspect_predictions)
-                    sentiment_true.extend(sentiment_labels.flatten())
-                    sentiment_pred.extend(sentiment_predictions.flatten())
+                    sentiment_true.extend(sentiment_labels)
+                    sentiment_pred.extend(sentiment_predictions)
 
-        Total = accuracy_score(output, labels)
+   
         aspect_accuracy = accuracy_score(aspect_true, aspect_pred)
         sentiment_accuracy = accuracy_score(sentiment_true, sentiment_pred)
+        Total = (aspect_accuracy + sentiment_accuracy)/2
 
         return Total, aspect_accuracy, sentiment_accuracy
+
+    def evaluate_aspect_sentiment_accuracy(self):
+        if self.args.no_cuda == False:
+            device = "cuda"
+        else:
+            device = "cpu"
+        
+        self.model.to(device)
+        self.model.eval()
+        
+        all_aspect_predictions = []
+        all_sentiment_predictions = []
+        all_aspect_ground_truth = []
+        all_sentiment_ground_truth = []
+        
+        with torch.no_grad():
+            for step, batch in enumerate(self.val_loader):
+                inputs = batch['input_ids'].to(device)
+                mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+
+                output = self.model(inputs, mask, self.categories)
+
+                output = torch.sigmoid(output)
+                output = output.float()
+                labels = labels.float()
+                
+                predictions = (output > 0.5).long()  
+              
+                
+                aspect_predictions = predictions[:, :, 0]  # Extract aspect predictions
+                
+                sentiment_predictions = predictions[:, :, 1:]  # Extract sentiment predictions
+                
+                ground_truth = labels[:, :, 0]  # Extract aspect ground truth
+              
+                sentiment_ground_truth = labels[:, :, 1:]  # Extract sentiment ground truth
+           
+                
+                
+                aspect_predictions_flat = aspect_predictions.view(-1).cpu().numpy()
+                sentiment_predictions_flat = sentiment_predictions.view(-1, 3).cpu().numpy()  # Assuming there are 3 sentiment labels
+                
+                aspect_ground_truth_flat = ground_truth.view(-1).cpu().numpy()
+                sentiment_ground_truth_flat = sentiment_ground_truth.view(-1, 3).cpu().numpy()  # Assuming there are 3 sentiment labels
+                
+                all_aspect_predictions.extend(aspect_predictions_flat)
+                all_aspect_ground_truth.extend(aspect_ground_truth_flat)
+                
+                all_sentiment_predictions.extend(sentiment_predictions_flat)
+                all_sentiment_ground_truth.extend(sentiment_ground_truth_flat)
+        
+        aspect_accuracy = accuracy_score(all_aspect_ground_truth, all_aspect_predictions)
+        sentiment_accuracy = accuracy_score(all_sentiment_ground_truth, all_sentiment_predictions)
+        
+        return aspect_accuracy, sentiment_accuracy
+    
+
+    def evaluate_aspect_sentiment_accuracy2(self):
+        if self.args.no_cuda == False:
+            device = "cuda"
+        else:
+            device = "cpu"
+
+        self.model.to(device)
+        self.model.eval()
+
+        all_aspect_predictions = []
+        all_sentiment_predictions = []
+        all_aspect_ground_truth = []
+        all_sentiment_ground_truth = []
+
+        with torch.no_grad():
+            for step, batch in enumerate(self.val_loader):
+                inputs = batch['input_ids'].to(device)
+                mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+
+                output = self.model(inputs, mask, self.categories)
+
+                output = torch.sigmoid(output)
+                output = output.float()
+
+                aspect_predictions = (output[:, :, 0] > 0.5).long()
+                sentiment_predictions = (output[:, :, 1:] > 0.5).long()
+
+                aspect_ground_truth = labels[:, :, 0].long()
+                sentiment_ground_truth = labels[:, :, 1:].long()
+
+                all_aspect_predictions.append(aspect_predictions.cpu().numpy())
+                all_sentiment_predictions.append(sentiment_predictions.cpu().numpy())
+                all_aspect_ground_truth.append(aspect_ground_truth.cpu().numpy())
+                all_sentiment_ground_truth.append(sentiment_ground_truth.cpu().numpy())
+
+        all_aspect_predictions = np.concatenate(all_aspect_predictions)
+        all_sentiment_predictions = np.concatenate(all_sentiment_predictions)
+        all_aspect_ground_truth = np.concatenate(all_aspect_ground_truth)
+        all_sentiment_ground_truth = np.concatenate(all_sentiment_ground_truth)
+
+        aspect_accuracy = accuracy_score(all_aspect_ground_truth.flatten(), all_aspect_predictions.flatten())
+        sentiment_accuracy = accuracy_score(all_sentiment_ground_truth.flatten(), all_sentiment_predictions.flatten())
+
+        return aspect_accuracy, sentiment_accuracy
     
     def save_model(self, model, optimizer, epoch, step, model_dir):
         model_name = f'model_epoch_{epoch}_step_{step}.pth'
@@ -222,13 +330,14 @@ class Solver():
                 epoch_progress.update(1)
                 epoch_progress.set_postfix({'Loss': loss.item()})
 
-                if (step + 1) % 100 == 0:
+                if (step + 1) % 10 == 0:
                     elapsed = time.time() - start
                     print(f'Epoch [{epoch + 1}/{self.args.epoch}], Step [{step + 1}/{len(self.train_loader)}], '
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
-                    # aspect , sentiment = self.evaluate()
-                    # print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
-                    # print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
+                    aspect , sentiment = self.evaluate_aspect_sentiment_accuracy2()
+               
+                    print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
+                    print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
             epoch_progress.close()
             #Valid stage 
             total , aspect , sentiment = self.evaluate()

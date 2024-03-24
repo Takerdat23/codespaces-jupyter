@@ -116,15 +116,18 @@ def process_data(df ,aspect_categories ):
 
    
             for aspect in aspect_categories:
-                label_vector = [0, 0, 0]  
+                label_vector = [0, 0, 0, 0]  
                 sentiment = aspect_sentiments.get(aspect, None)
+              
                 if sentiment:
                     if sentiment == 'Positive':
-                        label_vector[0] = 1
-                    elif sentiment == 'Negative':
                         label_vector[1] = 1
-                    elif sentiment == 'Neutral':
+                    elif sentiment == 'Negative':
                         label_vector[2] = 1
+                    elif sentiment == 'Neutral':
+                        label_vector[3] = 1
+                else: 
+                    label_vector[0] = 1 #if the aspect not in the currunt comment
                 label_vectors[aspect] = label_vector
 
         

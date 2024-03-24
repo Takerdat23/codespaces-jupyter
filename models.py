@@ -179,7 +179,7 @@ class ABSA_Tree_transfomer(nn.Module):
         self.word_embed = nn.Sequential(Embeddings(d_model, vocab_size), self.c(self.position))
         self.encoder = Encoder(EncoderLayer(d_model, self.c(self.attn), self.c(self.ff), vocab_size, self.group_attn, dropout), 
                     N, d_model, vocab_size, self.c(self.word_embed),  dropout)
-        self.outputHead = Aspect_Based_SA_Output(dropout , d_model, 3, num_categories ) # 3 class label
+        self.outputHead = Aspect_Based_SA_Output(dropout , d_model, 4, num_categories ) # 4 class label
 
         
         
