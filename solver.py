@@ -110,41 +110,41 @@ class Solver():
 
         self.model.to(device)
         self.model.eval()
-
-        aspect_predictions_all = []
-        aspect_ground_truth_all = []
-        sentiment_predictions_all = []
-        sentiment_ground_truth_all = []
+        aspect_true = []
+        aspect_pred = []
+        sentiment_true = []
+        sentiment_pred = []
 
         with torch.no_grad():
-            for step, batch in enumerate(self.val_loader):
+            for batch in self.val_loader:
                 inputs = batch['input_ids'].to(device)
                 mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
+                labels = batch['labels'].cpu().numpy()
 
-                output = self.model(inputs, mask, self.categories)
+                # Forward pass
+                output = self.model(inputs, mask, self.categories).cpu().numpy()
 
-                output = torch.sigmoid(output)
-                output = output.float()
+                # Iterate over each category
+                for category_index in range(output.shape[1]):
+                    # Extract aspect labels and predictions
+                    aspect_labels = labels[:, category_index, 0]
+                    aspect_predictions = output[:, category_index].argmax(axis=1)
 
-                # Convert probabilities to binary predictions for aspect detection
-                aspect_predictions = (output[:, :, :len(self.categories)] > 0.5).int()
-                aspect_ground_truth = labels[:, :, :len(self.categories)].int()
+                    # Extract sentiment labels and predictions
+                    sentiment_labels = labels[:, category_index, :].argmax(axis=1)  # Extract sentiment labels correctly
+                    sentiment_predictions = output[:, category_index, :].argmax(axis=1)
+                   
 
-                # Convert probabilities to multi-class predictions for sentiment detection
-                sentiment_predictions = torch.argmax(output[:, :, len(self.categories):], dim=2)
-                sentiment_ground_truth = torch.argmax(labels[:, :, len(self.categories):], dim=2)
 
-                aspect_predictions_all.extend(aspect_predictions.cpu().numpy())
-                aspect_ground_truth_all.extend(aspect_ground_truth.cpu().numpy())
-                sentiment_predictions_all.extend(sentiment_predictions.cpu().numpy())
-                sentiment_ground_truth_all.extend(sentiment_ground_truth.cpu().numpy())
+                    # Extend lists
+                    aspect_true.extend(aspect_labels)
+                    aspect_pred.extend(aspect_predictions)
+                    sentiment_true.extend(sentiment_labels.flatten())
+                    sentiment_pred.extend(sentiment_predictions.flatten())
 
-        # Calculate accuracy for aspect detection
-        aspect_accuracy = accuracy_score(aspect_ground_truth_all, aspect_predictions_all)
-
-        # Calculate accuracy for sentiment detection
-        sentiment_accuracy = accuracy_score(sentiment_ground_truth_all, sentiment_predictions_all)
+ 
+        aspect_accuracy = accuracy_score(aspect_true, aspect_pred)
+        sentiment_accuracy = accuracy_score(sentiment_true, sentiment_pred)
 
         return aspect_accuracy, sentiment_accuracy
     
@@ -222,10 +222,13 @@ class Solver():
                 epoch_progress.update(1)
                 epoch_progress.set_postfix({'Loss': loss.item()})
 
-                if (step + 1) % 100 == 0:
+                if (step + 1) % 10 == 0:
                     elapsed = time.time() - start
                     print(f'Epoch [{epoch + 1}/{self.args.epoch}], Step [{step + 1}/{len(self.train_loader)}], '
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
+                    aspect , sentiment = self.evaluate()
+                    print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
+                    print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
             epoch_progress.close()
             #Valid stage 
             aspect , sentiment = self.evaluate()
