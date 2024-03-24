@@ -107,13 +107,15 @@ class Solver():
             device = "cuda"
         else:
             device = "cpu"
-        
+
         self.model.to(device)
         self.model.eval()
-        
-        all_aspect_predictions = {aspect: [] for aspect in self.categories}
-        all_aspect_ground_truth = {aspect: [] for aspect in self.categories}
-        
+
+        aspect_predictions_all = []
+        aspect_ground_truth_all = []
+        sentiment_predictions_all = []
+        sentiment_ground_truth_all = []
+
         with torch.no_grad():
             for step, batch in enumerate(self.val_loader):
                 inputs = batch['input_ids'].to(device)
@@ -124,27 +126,27 @@ class Solver():
 
                 output = torch.sigmoid(output)
                 output = output.float()
-                labels = labels.float()
-                
-                # Convert probabilities to binary predictions
-                predictions = torch.argmax(output, dim=2)
-                ground_truth = torch.argmax(labels, dim=2)
-                
-                for aspect in self.categories:
-                    aspect_predictions = predictions[:, self.categories.index(aspect)]
-                    aspect_ground_truth = ground_truth[:, self.categories.index(aspect)]
-                    
-                    aspect_predictions_flat = aspect_predictions.view(-1).cpu().numpy()
-                    aspect_ground_truth_flat = aspect_ground_truth.view(-1).cpu().numpy()
-                    
-                    all_aspect_predictions[aspect].extend(aspect_predictions_flat)
-                    all_aspect_ground_truth[aspect].extend(aspect_ground_truth_flat)
-        # Aspect + Sentiment analysis evaluation
-        true_combined_labels = [all_aspect_ground_truth[aspect] for aspect in self.categories]
-        predicted_combined_labels = [all_aspect_predictions[aspect] for aspect in self.categories]
-        combined_analysis_accuracy = calculate_accuracy(true_combined_labels, predicted_combined_labels)
-        
-        return combined_analysis_accuracy
+
+                # Convert probabilities to binary predictions for aspect detection
+                aspect_predictions = (output[:, :, :len(self.categories)] > 0.5).int()
+                aspect_ground_truth = labels[:, :, :len(self.categories)].int()
+
+                # Convert probabilities to multi-class predictions for sentiment detection
+                sentiment_predictions = torch.argmax(output[:, :, len(self.categories):], dim=2)
+                sentiment_ground_truth = torch.argmax(labels[:, :, len(self.categories):], dim=2)
+
+                aspect_predictions_all.extend(aspect_predictions.cpu().numpy())
+                aspect_ground_truth_all.extend(aspect_ground_truth.cpu().numpy())
+                sentiment_predictions_all.extend(sentiment_predictions.cpu().numpy())
+                sentiment_ground_truth_all.extend(sentiment_ground_truth.cpu().numpy())
+
+        # Calculate accuracy for aspect detection
+        aspect_accuracy = accuracy_score(aspect_ground_truth_all, aspect_predictions_all)
+
+        # Calculate accuracy for sentiment detection
+        sentiment_accuracy = accuracy_score(sentiment_ground_truth_all, sentiment_predictions_all)
+
+        return aspect_accuracy, sentiment_accuracy
     
     def save_model(self, model, optimizer, epoch, step, model_dir):
         model_name = f'model_epoch_{epoch}_step_{step}.pth'
@@ -226,10 +228,13 @@ class Solver():
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
             epoch_progress.close()
             #Valid stage 
-            score = self.evaluate()
-            print(f"Epoch {epoch} Validation accuracy (Aspect + polarity): ", score)
+            aspect , sentiment = self.evaluate()
+            print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
+            print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
+
+            combined_accuracy = (aspect + sentiment) / 2
             if (self.args.wandb_api != ""):
-                wandb.log({"Validation Accuracy": score}, step=epoch)
+                wandb.log({"Validation Accuracy": combined_accuracy}, step=epoch)
            
                     
                 
