@@ -16,6 +16,7 @@ def parse():
     parser.add_argument('-valid_path',default='data/valid.txt',help='validation data path')
     parser.add_argument('-train_path',default='data/train.txt',help='training data path')
     parser.add_argument('-test_path',default='data/test.txt',help='testing data path')
+    parser.add_argument('-wandb_api',default='',help='wandb api key')
     args = parser.parse_args()
     
     return args

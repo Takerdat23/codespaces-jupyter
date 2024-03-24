@@ -11,7 +11,7 @@ import random
 from bert_optimizer import BertAdam
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score
-
+import wandb
 
 class Solver():
     def __init__(self, args):
@@ -22,8 +22,12 @@ class Solver():
         if not os.path.exists(os.path.join(self.model_dir,'code')):
             os.makedirs(os.path.join(self.model_dir,'code'))
     
-        
+        if args.wandb_api != "": 
 
+            wandb.login(key=args.wandb_api)
+
+   
+         
 
         self.tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
 
@@ -170,6 +174,9 @@ class Solver():
                     ttt *= s
                 tt += ttt
         print('total_param_num:',tt)
+        if (self.args.wandb_api != ""):
+            wandb.init(project="Tree_transformer", name="training ABSA")
+
 
         self.model.to(device)
      
@@ -185,7 +192,9 @@ class Solver():
         start = time.time()
         
         for epoch in tqdm(range(self.args.epoch)):
-            for step, batch in tqdm(enumerate(self.train_loader)):
+            epoch_progress = tqdm(total=len(self.train_loader), desc=f'Epoch {epoch+1}/{self.args.epoch}', position=0)
+
+            for step, batch in enumerate(self.train_loader):
                 inputs = batch['input_ids'].to(device)
                 mask = batch['attention_mask'].to(device)
                 labels = batch['labels'].to(device)
@@ -206,15 +215,21 @@ class Solver():
                 # Backpropagation
                 loss.backward()
                 optim.step()
+                if (self.args.wandb_api != ""):
+                    wandb.log({"Loss": loss.item()}, step=epoch*len(self.train_loader) + step)
+                epoch_progress.update(1)
+                epoch_progress.set_postfix({'Loss': loss.item()})
 
                 if (step + 1) % 100 == 0:
                     elapsed = time.time() - start
                     print(f'Epoch [{epoch + 1}/{self.args.epoch}], Step [{step + 1}/{len(self.train_loader)}], '
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
-            
+            epoch_progress.close()
             #Valid stage 
             score = self.evaluate()
             print(f"Epoch {epoch} Validation accuracy (Aspect + polarity): ", score)
+            if (self.args.wandb_api != ""):
+                wandb.log({"Validation Accuracy": score}, step=epoch)
            
                     
                 
