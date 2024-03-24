@@ -98,7 +98,7 @@ class Solver():
         
     #     return f1_accuracy
     
-    def evaluate_f1_score(self):
+    def evaluate(self):
         if self.args.no_cuda == False:
             device = "cuda"
         else:
@@ -135,12 +135,12 @@ class Solver():
                     
                     all_aspect_predictions[aspect].extend(aspect_predictions_flat)
                     all_aspect_ground_truth[aspect].extend(aspect_ground_truth_flat)
+        # Aspect + Sentiment analysis evaluation
+        true_combined_labels = [all_aspect_ground_truth[aspect] for aspect in self.categories]
+        predicted_combined_labels = [all_aspect_predictions[aspect] for aspect in self.categories]
+        combined_analysis_accuracy = calculate_accuracy(true_combined_labels, predicted_combined_labels)
         
-        aspect_f1_scores = {}
-        for aspect in self.categories:
-            aspect_f1_scores[aspect] = f1_score(all_aspect_ground_truth[aspect], all_aspect_predictions[aspect], average='weighted')
-        
-        return aspect_f1_scores
+        return combined_analysis_accuracy
     
     def save_model(self, model, optimizer, epoch, step, model_dir):
         model_name = f'model_epoch_{epoch}_step_{step}.pth'
@@ -213,8 +213,8 @@ class Solver():
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
             
             #Valid stage 
-            f1_score = self.evaluate_f1_accuracy()
-            print(f"Epoch {epoch} Validation score: ", f1_score)
+            score = self.evaluate()
+            print(f"Epoch {epoch} Validation accuracy (Aspect + polarity): ", score)
            
                     
                 

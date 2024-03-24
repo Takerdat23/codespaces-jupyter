@@ -16,7 +16,46 @@ from torch.nn.utils.rnn import pad_sequence
 import pandas as pd 
 import time
 from torch.utils.data import Dataset
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+def calculate_accuracy(true_labels, predicted_labels):
+    return accuracy_score(true_labels, predicted_labels)
+
+def calculate_precision(true_labels, predicted_labels):
+    return precision_score(true_labels, predicted_labels, average='weighted')
+
+def calculate_recall(true_labels, predicted_labels):
+    return recall_score(true_labels, predicted_labels, average='weighted')
+
+def calculate_f1_score(true_labels, predicted_labels):
+    return f1_score(true_labels, predicted_labels, average='weighted')
+
+
+# true_aspect_labels = [1 if aspect in true_labels else 0 for aspect in aspect_categories]
+# predicted_aspect_labels = [1 if aspect in predicted_labels else 0 for aspect in aspect_categories]
+
+# aspect_detection_accuracy = calculate_accuracy(true_aspect_labels, predicted_aspect_labels)
+# aspect_detection_precision = calculate_precision(true_aspect_labels, predicted_aspect_labels)
+# aspect_detection_recall = calculate_recall(true_aspect_labels, predicted_aspect_labels)
+# aspect_detection_f1_score = calculate_f1_score(true_aspect_labels, predicted_aspect_labels)
+
+# # Sentiment analysis evaluation
+# true_sentiment_labels = [label_vectors[aspect] for aspect in aspect_categories]
+# predicted_sentiment_labels = [label_vectors[aspect] for aspect in aspect_categories]
+
+# sentiment_analysis_accuracy = calculate_accuracy(true_sentiment_labels, predicted_sentiment_labels)
+# sentiment_analysis_precision = calculate_precision(true_sentiment_labels, predicted_sentiment_labels)
+# sentiment_analysis_recall = calculate_recall(true_sentiment_labels, predicted_sentiment_labels)
+# sentiment_analysis_f1_score = calculate_f1_score(true_sentiment_labels, predicted_sentiment_labels)
+
+# # Aspect + Sentiment analysis evaluation
+# true_combined_labels = [label_vectors[aspect] for aspect in aspect_categories]
+# predicted_combined_labels = [label_vectors[aspect] for aspect in aspect_categories]
+
+# combined_analysis_accuracy = calculate_accuracy(true_combined_labels, predicted_combined_labels)
+# combined_analysis_precision = calculate_precision(true_combined_labels, predicted_combined_labels)
+# combined_analysis_recall = calculate_recall(true_combined_labels, predicted_combined_labels)
+# combined_analysis_f1_score = calculate_f1_score(true_combined_labels, predicted_combined_labels)
 
 
 def read_json(filename):
