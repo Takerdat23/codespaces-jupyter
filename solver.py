@@ -142,11 +142,11 @@ class Solver():
                     sentiment_true.extend(sentiment_labels.flatten())
                     sentiment_pred.extend(sentiment_predictions.flatten())
 
- 
+        Total = accuracy_score(output, labels)
         aspect_accuracy = accuracy_score(aspect_true, aspect_pred)
         sentiment_accuracy = accuracy_score(sentiment_true, sentiment_pred)
 
-        return aspect_accuracy, sentiment_accuracy
+        return Total, aspect_accuracy, sentiment_accuracy
     
     def save_model(self, model, optimizer, epoch, step, model_dir):
         model_name = f'model_epoch_{epoch}_step_{step}.pth'
@@ -222,16 +222,17 @@ class Solver():
                 epoch_progress.update(1)
                 epoch_progress.set_postfix({'Loss': loss.item()})
 
-                if (step + 1) % 10 == 0:
+                if (step + 1) % 100 == 0:
                     elapsed = time.time() - start
                     print(f'Epoch [{epoch + 1}/{self.args.epoch}], Step [{step + 1}/{len(self.train_loader)}], '
                         f'Loss: {loss.item():.4f}, Total Time: {elapsed:.2f} sec')
-                    aspect , sentiment = self.evaluate()
-                    print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
-                    print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
+                    # aspect , sentiment = self.evaluate()
+                    # print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
+                    # print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
             epoch_progress.close()
             #Valid stage 
-            aspect , sentiment = self.evaluate()
+            total , aspect , sentiment = self.evaluate()
+            print(f"Epoch {epoch} Validation accuracy (Total): ",total )
             print(f"Epoch {epoch} Validation accuracy (Aspect): ", aspect)
             print(f"Epoch {epoch} Validation accuracy (Sentiment): ", sentiment)
 
