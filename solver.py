@@ -45,8 +45,8 @@ class Solver():
         self.train_loader = DataLoader(dataset, batch_size=self.args.batch_size, collate_fn=data_collator)
         self.val_loader =DataLoader(val_dataset, batch_size=self.args.batch_size, collate_fn=data_collator)
       
-        self.model = ABSA_Tree_transfomer( vocab_size= self.tokenizer.vocab_size, N= 12, d_model= 768, 
-                                          d_ff= 2048, h= 12, dropout = 0.1, num_categories = len(self.categories) , 
+        self.model = ABSA_Tree_transfomer( vocab_size= self.tokenizer.vocab_size, N= 24, d_model= 1028, 
+                                          d_ff= 4096, h= 16, dropout = 0.1, num_categories = len(self.categories) , 
                                           no_cuda=args.no_cuda)
 
 
